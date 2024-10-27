@@ -62,3 +62,5 @@ st.subheader("Portfolio Beta")
 st.write("Placeholder for Portfolio Beta calculation")
 
 # streamlit run markowitz_dashboard.py
+
+print('hello')
