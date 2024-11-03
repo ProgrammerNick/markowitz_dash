@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
 # Set the title of the app
-st.title("Portfolio Visualization")
+st.title("Portfolio Visualization test")
 
 # Ticker selection in sidebar
 tickers = ['AAPL', 'NVDA', 'MSFT', 'AMZN', 'META', 'GOOGL']
