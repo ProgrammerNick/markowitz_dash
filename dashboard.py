@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import yfinance as yf
 
 # Sample portfolio data (placeholder)
 portfolio_weights = {'Asset A': 0.4, 'Asset B': 0.3, 'Asset C': 0.3}
@@ -61,5 +62,4 @@ st.write("Placeholder for historical and real-time drawdown analysis")
 st.subheader("Portfolio Beta")
 st.write("Placeholder for Portfolio Beta calculation")
 
-# streamlit run dashboard.py
-#winwinwin
+# streamlit run dashboard.py <- command to run streamlit/host locally
