@@ -1,4 +1,4 @@
-# Import necessary libraries 
+# Import necessary libraries
 import streamlit as st
 import yfinance as yf
 import numpy as np
@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
 # Set the title of the app
-st.title("Portfolio Visualization with Dividends")
+st.title("Portfolio Visualization test")
 
 # Ticker selection in sidebar
 tickers = ['AAPL', 'NVDA', 'MSFT', 'AMZN', 'META', 'GOOGL']
@@ -17,30 +17,18 @@ selected_tickers = st.sidebar.multiselect("Select tickers", tickers, default=tic
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2020-01-01"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("2024-01-01"))
 
-# Download adjusted close prices and dividends
-data = yf.download(selected_tickers, start=start_date, end=end_date)
-price_data = data['Adj Close']
-dividend_data = data['Dividends']
+# Download data from yfinance
+data = yf.download(selected_tickers, start=start_date, end=end_date)['Adj Close']
+st.write("Stock Price Data", data.head())
 
-# Calculate daily log returns for price data
-log_returns = np.log(price_data / price_data.shift(1))
+# Calculate daily log returns
+log_returns = np.log(data / data.shift(1))
+st.write("Log Returns", log_returns.head())
 
-# Calculate dividend yield
-dividend_yield = dividend_data / price_data.shift(1)
-
-# Nicolas new function: Calculate total returns including dividends
-def calculate_total_returns(log_returns, dividend_yield):
-    total_returns = log_returns + dividend_yield
-    return total_returns
-
-# Use the new function to calculate total returns
-total_returns = calculate_total_returns(log_returns, dividend_yield)
-st.write("Total Returns with Dividends", total_returns.head())
-
-# Define the portfolio performance function with dividends
-def portfolio_performance(weights, total_returns):
-    expected_return = np.sum(weights * total_returns.mean()) * 252  # Annualize
-    portfolio_std = np.sqrt(np.dot(weights.T, np.dot(total_returns.cov() * 252, weights)))
+# Define the portfolio performance function
+def portfolio_performance(weights, log_returns):
+    expected_return = np.sum(weights * log_returns.mean()) * 252  # 252 trading days
+    portfolio_std = np.sqrt(np.dot(weights.T, np.dot(log_returns.cov() * 252, weights)))
     return expected_return, portfolio_std
 
 # Number of portfolios to simulate
@@ -51,7 +39,7 @@ results = np.zeros((3, num_portfolios))
 for i in range(num_portfolios):
     weights = np.random.random(len(selected_tickers))
     weights /= np.sum(weights)
-    expected_return, portfolio_std = portfolio_performance(weights, total_returns)
+    expected_return, portfolio_std = portfolio_performance(weights, log_returns)
     results[0, i] = portfolio_std
     results[1, i] = expected_return
     results[2, i] = expected_return / portfolio_std  # Sharpe ratio
@@ -62,7 +50,7 @@ scatter = ax.scatter(results[0, :], results[1, :], c=results[2, :], cmap='viridi
 plt.colorbar(scatter, label='Sharpe Ratio')
 plt.xlabel('Risk (Standard Deviation)')
 plt.ylabel('Return')
-plt.title('Simulated Portfolios with Dividends')
+plt.title('Simulated Portfolios')
 
 # Display the plot in Streamlit
 st.pyplot(fig)
