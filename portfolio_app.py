@@ -36,7 +36,7 @@ st.write("Log Returns", log_returns.head())
 
 # Calculate annual dividend yield
 dividend_yields = dividends_data.sum() / data.mean()
-annual_dividend_yield = dividend_yields * years_diff
+annual_dividend_yield = dividend_yields / years_diff
 
 # Define the portfolio performance function with dividends
 def portfolio_performance(weights, log_returns, dividend_yields):
