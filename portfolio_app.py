@@ -50,7 +50,6 @@ num_portfolios = 10000
 results = np.zeros((3, num_portfolios))
 
 tracked_weights = []
-tracked_returns = []
 
 # Simulate portfolios
 for i in range(num_portfolios):
@@ -58,7 +57,6 @@ for i in range(num_portfolios):
     weights /= np.sum(weights)
     tracked_weights.append(weights)
     expected_return, portfolio_std = portfolio_performance(weights, log_returns, annual_dividend_yield)
-    tracked_returns.append(expected_return)
     results[0, i] = portfolio_std
     results[1, i] = expected_return
     results[2, i] = expected_return / portfolio_std  # Sharpe ratio
@@ -73,7 +71,7 @@ plt.title('Simulated Portfolios with Dividends')
 
 # Display the plot in Streamlit
 st.pyplot(fig)
-best_weights = sorted(zip(results[2], tracked_weights, tracked_returns), key=lambda x: x[0], reverse=True)[:5]
+best_weights = sorted(zip(results[2], tracked_weights, results[1]), key=lambda x: x[0], reverse=True)[:5]
 
 for sharpe, weights, returns in best_weights:
             st.write(f"Sharpe Ratio: {sharpe:.4f}")
