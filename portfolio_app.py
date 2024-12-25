@@ -9,15 +9,30 @@ from scipy.optimize import minimize
 st.title("Portfolio Optimization Simulator")
 st.write("This app allows you to optimize portfolio weights based on historical data.")
 
+tickers = None
+
 # Option to manually input tickers
 tickers_input = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOGL):")
+
+# Get historical data for the tickers
+start_date = st.date_input("Start Date", value=pd.to_datetime("2021-01-01"))
+end_date = st.date_input("End Date", value=pd.to_datetime("2024-10-01"))
+
+risk_free_rate = float(st.text_input("Enter risk free rate:", .04242))
+
+if st.button("Run Simulation"):
+    # If no file uploaded, use manual input
+    if tickers_input:
+        tickers = sorted([ticker.strip() for ticker in tickers_input.split(',')])
+        initial_guess = np.ones(len(tickers)) / len(tickers)  # Default to equal weights if no file is uploaded
+    else:
+        st.warning("Please manually input tickers to proceed.")
+
 
 # Option to upload portfolio CSV
 uploaded_file = st.file_uploader("Or upload your portfolio CSV", type=["csv"])
 
-tickers = None
 
-risk_free_rate = float(st.text_input("Enter risk free rate:", .04242))
 
 # Process input from the manual tickers or uploaded CSV
 if uploaded_file is not None:
@@ -41,20 +56,9 @@ if uploaded_file is not None:
         else:
             # Default to equal weights if no weights are provided
             initial_guess = np.ones(len(tickers)) / len(tickers)
-else:
-    # If no file uploaded, use manual input
-    if tickers_input:
-        tickers = sorted([ticker.strip() for ticker in tickers_input.split(',')])
-        initial_guess = np.ones(len(tickers)) / len(tickers)  # Default to equal weights if no file is uploaded
-
-    else:
-        st.warning("Please either upload a CSV or manually input tickers to proceed.")
 
 # Proceed with optimization if tickers are provided
 if tickers:
-    # Get historical data for the tickers
-    start_date = st.date_input("Start Date", value=pd.to_datetime("2021-01-01"))
-    end_date = st.date_input("End Date", value=pd.to_datetime("2024-10-01"))
 
     # Fetch adjusted close prices for tickers
     st.write(f"Fetching data for tickers: {tickers}...")
