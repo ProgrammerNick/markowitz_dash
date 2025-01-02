@@ -7,7 +7,7 @@ from scipy.optimize import minimize
 
 # Set up the Streamlit app layout
 st.title("Portfolio Optimization Simulator")
-st.write("This app allows you to optimize portfolio weights based on historical data.")
+st.write(f"This app allows you to optimize portfolio weights based on historical data.\n To view documentation and code, click on this link [here](https://github.com/ProgrammerNick/markowitz_dash/)")
 
 tickers = None
 
