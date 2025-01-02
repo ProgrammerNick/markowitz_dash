@@ -30,7 +30,7 @@ if st.button("Run Simulation"):
 
 
 # Option to upload portfolio CSV
-uploaded_file = st.file_uploader("Or upload your portfolio CSV", type=["csv"])
+uploaded_file = st.file_uploader("Or upload your portfolio CSV - Tickers in the first column, weights in the second column (optional)", type=["csv"])
 
 
 
