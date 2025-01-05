@@ -10,4 +10,6 @@ It is worth noting we are including dividends in the total return.
 
 If you have any additional questions please feel free to reach out to me at nnicolas@umich.edu. Thank You! We hope you enjoy the program!
 
+To access the interactive program (webapp) please click on the following link: [portfolioptimization.streamlit.app](https://portfolioptimizer.streamlit.app/) to view the app.
+
 Lastly, much of the information provided by this program utilizes historical data, like previous volatility (historical variances & covariances) as well as historical returns to output the highest performing portfolios. **Past performance is no guarantee of future results.** This program is for educational purposes only, and does not constitute a recommendation to buy or sell securities. Before buying or selling any securities you should do your own research. Investing includes risks, including loss of principal.
