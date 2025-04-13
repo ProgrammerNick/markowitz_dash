@@ -4,10 +4,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
+import pytz
+import plotly.graph_objects as go  # Add Plotly for interactive plotting
 
 # Set up the Streamlit app layout
 st.title("Portfolio Optimization Simulator")
-st.write("This app allows you to optimize portfolio weights based on historical data.")
+st.write("This app allows you to optimize portfolio weights based on historical data. To view the Github for documentation & code, click on this link [here](https://github.com/ProgrammerNick/markowitz_dash/)")
 
 tickers = None
 
@@ -28,11 +30,8 @@ if st.button("Run Simulation"):
     else:
         st.warning("Please manually input tickers to proceed.")
 
-
 # Option to upload portfolio CSV
-uploaded_file = st.file_uploader("Or upload your portfolio CSV - Tickers in the first column, weights in the second column (optional)", type=["csv"])
-
-
+uploaded_file = st.file_uploader("Or upload your portfolio CSV - tickers in the first column, weights in the second column (optional)", type=["csv"])
 
 # Process input from the manual tickers or uploaded CSV
 if uploaded_file is not None:
@@ -59,29 +58,54 @@ if uploaded_file is not None:
 
 # Proceed with optimization if tickers are provided
 if tickers:
-
     # Fetch adjusted close prices for tickers
     st.write(f"Fetching data for tickers: {tickers}...")
-    data = yf.download(tickers, start=start_date, end=end_date, progress=False)['Adj Close']
-    dividends = yf.download(tickers, start=start_date, end=end_date, actions=True, progress=False)['Dividends']
+    data = yf.download(tickers, start=start_date, end=end_date, progress=False)['Close']
+    
+    # Handle case where data is a Series (single ticker) by converting to DataFrame
+    if isinstance(data, pd.Series):
+        data = data.to_frame(name=tickers[0])
     
     # Handle any missing data by forward/backward filling
-    data = data.fillna(method='ffill').fillna(method='bfill')
-    dividends = dividends.fillna(0)  # Replace NaN dividends with 0
+    data = data.ffill().bfill()
+
+    # Initialize dividends DataFrame
+    dividends = pd.DataFrame(index=data.index, columns=data.columns).fillna(0)
+
+    # Convert start_date and end_date to timezone-aware datetime
+    tz = pytz.timezone('America/New_York')
+    start_date = pd.to_datetime(start_date).normalize().tz_localize(None)
+    end_date = pd.to_datetime(end_date).normalize().tz_localize(None)
+
+    # Fetch dividends individually for each ticker
+    st.write("Fetching dividend data...")
+    for ticker in tickers:
+        try:
+            ticker_obj = yf.Ticker(ticker)
+            div = ticker_obj.dividends
+            div.index = pd.to_datetime(div.index).normalize().tz_localize(None)
+            # Filter dividends within the date range
+            div = div.loc[(div.index >= start_date) & (div.index <= end_date)]
+            # Resample to match data index (daily), forward fill, and align
+            div = div.reindex(data.index).fillna(0)
+            dividends[ticker] = div
+        except Exception as e:
+            st.warning(f"Could not fetch dividends for {ticker}: {e}. Assuming zero dividends.")
+            dividends[ticker] = 0
 
     # Calculate total dividends paid per ticker
     daily_dividends = dividends.sum(axis=0)  # Sum daily dividends for each ticker
 
-
     # Convert to annualized dividends
-    # Calculate the difference in years between start and end dates
     total_days = (end_date - start_date).days
     years_difference = total_days / 365.25  # Account for leap years
     annual_dividends = daily_dividends / years_difference
 
     # Adjust returns to account for dividends
     dividend_yield = dividends / data  # Daily dividend yield
+    dividend_yield = dividend_yield.fillna(0)  # Replace NaN with 0
     log_price_returns = np.log(data / data.shift(1))  # Log price returns
+    log_price_returns = log_price_returns.fillna(0)  # Handle NaN from first row
     total_returns = log_price_returns + dividend_yield.shift(1).fillna(0)  # Add dividend yield to total returns
 
     # Display the annualized dividends
@@ -116,7 +140,7 @@ if tickers:
     optimized_sharpe = result.fun * -1
     st.write(f"Optimized Expected Annual Return: {optimized_return:.4f}")
     st.write(f"Optimized Annual Risk (Standard Deviation): {optimized_risk:.4f}")
-    st.write(f"Optimized Sharpe: {optimized_sharpe:4f}")
+    st.write(f"Optimized Sharpe: {optimized_sharpe:.4f}")
 
     optimized_weights_df = pd.DataFrame({
         "Ticker": tickers,
@@ -145,29 +169,66 @@ if tickers:
 
     # Convert portfolios to a DataFrame
     portfolios_df = pd.DataFrame(portfolios, columns=["Expected Return", "Risk (Std Dev)", "Sharpe Ratio", "Weights"])
-    
+
+    # Create hover text with portfolio weights
+    hover_texts = []
+    for i, row in portfolios_df.iterrows():
+        weights = row['Weights']
+        # Format weights as a string for each ticker
+        weights_str = '<br>'.join([f"{ticker}: {weight:.2%}" for ticker, weight in zip(tickers, weights)])
+        hover_text = (
+            f"Return: {row['Expected Return']:.2%}<br>"
+            f"Risk: {row['Risk (Std Dev)']:.2%}<br>"
+            f"Sharpe Ratio: {row['Sharpe Ratio']:.4f}<br>"
+            f"Weights:<br>{weights_str}"
+        )
+        hover_texts.append(hover_text)
+
+    # Create Plotly scatter plot
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=portfolios_df["Risk (Std Dev)"],
+            y=portfolios_df["Expected Return"],
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=portfolios_df["Sharpe Ratio"],
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="Sharpe Ratio"),
+            ),
+            text=hover_texts,
+            hoverinfo='text',
+        )
+    )
+
+    # Update layout
+    fig.update_layout(
+        title="Simulated Portfolios (Efficient Frontier)",
+        xaxis_title="Risk (Standard Deviation)",
+        yaxis_title="Return",
+        width=800,
+        height=600,
+        showlegend=False,
+    )
+
+    # Display the plot in Streamlit
+    st.plotly_chart(fig, use_container_width=True)
+
     # Sort the portfolios by Sharpe ratio in descending order
     top_5_portfolios = portfolios_df.sort_values(by="Sharpe Ratio", ascending=False).head(5)
-
-        # Plotting the efficient frontier
-    plt.figure(figsize=(10, 6))
-    plt.scatter(results[0, :], results[1, :], c=results[2, :], cmap='viridis')
-    plt.colorbar(label='Sharpe Ratio')
-    plt.xlabel('Risk (Standard Deviation)')
-    plt.ylabel('Return')
-    plt.title('Simulated Portfolios (Efficient Frontier)')
-    st.pyplot(plt.gcf())
 
     # Display expected return, Sharpe ratio, and standard deviation on top
     st.subheader("Top 5 Portfolios Based on Sharpe Ratio")
     portfolio_counter = 1
     for index, row in top_5_portfolios.iterrows():
-        st.subheader(f"Porfolio {portfolio_counter}")
+        st.subheader(f"Portfolio {portfolio_counter}")
         st.write(f"Expected Return: {row['Expected Return']:.4f}")
         st.write(f"Sharpe Ratio: {row['Sharpe Ratio']:.4f}")
         st.write(f"Portfolio Standard Deviation: {row['Risk (Std Dev)']:.4f}")
         st.write("Ticker Weights:")
-        portfolio_counter = portfolio_counter+1
+        portfolio_counter += 1
         
         # Convert weights for this portfolio into a DataFrame with tickers and their respective weights
         weights_df = pd.DataFrame({
@@ -177,6 +238,5 @@ if tickers:
 
         st.dataframe(weights_df)
     
-
 else:
     st.write("Please provide tickers either manually or via a CSV to proceed with optimization.")
