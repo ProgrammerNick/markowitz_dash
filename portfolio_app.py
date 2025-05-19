@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 import plotly.graph_objects as go
+from datetime import datetime, timedelta, date
 
 # Set up the Streamlit app layout
 st.title("Portfolio Optimization Simulator")
@@ -14,10 +15,21 @@ tickers = None
 
 # Option to manually input tickers
 tickers_input = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOGL):")
+max_date = date.today()
 
-# Get historical data for the tickers
-start_date = st.date_input("Start Date", value=pd.to_datetime("2021-01-01"))
-end_date = st.date_input("End Date", value=pd.to_datetime("2024-10-01"))
+# Set up date inputs with min and max values
+start_date = st.date_input(
+    "Start Date",
+    value=pd.to_datetime("2021-01-01"),
+    min_value=pd.to_datetime("1962-01-01"),
+    max_value=max_date
+)
+end_date = st.date_input(
+    "End Date",
+    value=pd.to_datetime("2024-10-01"),
+    min_value=pd.to_datetime("1962-01-01"),
+    max_value=max_date
+)
 
 risk_free_rate = float(st.text_input("Enter risk free rate:", .04242))
 
@@ -50,14 +62,22 @@ if uploaded_file is not None:
 if tickers:
     # Fetch adjusted close prices
     st.write(f"Fetching data for tickers: {tickers}...")
-    data = yf.download(tickers, start=start_date, end=end_date, progress=False, auto_adjust=True)['Close']
+
+    # Assuming start_date and end_date are from st.date_input
+    # Adjust end_date to include the specified date
+    adjusted_end_date = end_date + timedelta(days=1)
+
+    data = yf.download(tickers, start=start_date, end=adjusted_end_date, progress=False, auto_adjust=True)['Close']
     
     # Handle single ticker case
     if isinstance(data, pd.Series):
         data = data.to_frame(name=tickers[0])
     
-    # Handle missing data
-    data = data.ffill().bfill()
+    if data.isna().any().any():
+        data = data.dropna()
+        first_date = data.index[0].strftime('%Y/%m/%d')
+        last_date = data.index[-1].strftime('%Y/%m/%d')
+        st.warning(f"Some stocks have missing data. Using only complete data periods. \n\nData range being used: {first_date} to {last_date}")
 
     # Calculate total returns using adjusted close prices
     total_returns = np.log(data / data.shift(1)).fillna(0)
