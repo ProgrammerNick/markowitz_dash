@@ -77,7 +77,7 @@ if tickers:
         data = data.dropna()
         first_date = data.index[0].strftime('%Y/%m/%d')
         last_date = data.index[-1].strftime('%Y/%m/%d')
-        st.warning(f"Some stocks have missing data. Using only complete data periods. \n\nData range being used: {first_date} to {last_date}")
+        st.warning(f"Some stocks have missing data. Using only complete data periods. \n\nDate range being used: {first_date} to {last_date}")
 
     # Calculate total returns using adjusted close prices
     total_returns = np.log(data / data.shift(1)).fillna(0)
