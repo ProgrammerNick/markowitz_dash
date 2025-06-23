@@ -12,5 +12,5 @@ To access the interactive program (web app) please click on the following link: 
 
 Lastly, much of the information provided by this program utilizes historical data, like previous volatility (historical variances & covariances) as well as historical returns to output the highest performing portfolios. **Past performance is no guarantee of future results.** This program is for educational purposes only, and does not constitute a recommendation to buy or sell securities. Before buying or selling any securities you should do your own research. Investing includes risks, including loss of principal.
 
-## Please note:
+## Additional
 To optimize resources, Streamlit places apps on its Streamlit Community Cloud service in sleep mode while not in use. If you would like to view the app, please click to wake the app up.
