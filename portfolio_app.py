@@ -284,7 +284,7 @@ if tickers:
     
     top_5_portfolios = portfolios_df.sort_values(by="Sharpe Ratio", ascending=False).head(5)
 
-    st.subheader("Top 5 Portfolios Based on Sharpe Ratio")
+    st.subheader("Top 5 Portfolios by Sharpe Ratio for Simulated Trials")
     portfolio_counter = 1
     for index, row in top_5_portfolios.iterrows():
         st.subheader(f"Portfolio {portfolio_counter}")
