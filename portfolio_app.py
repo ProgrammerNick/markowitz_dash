@@ -12,29 +12,53 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS for modern typography and clean UI card components
+# Custom CSS for Mobile Responsiveness, Typography, and UI Components
 st.markdown("""
 <style>
+    /* Mobile responsive container padding */
+    .main .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        padding-top: 1.5rem !important;
+        max-width: 100% !important;
+    }
+    /* Metric Card Styling */
     div[data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
+        font-size: 1.5rem !important;
         font-weight: 700 !important;
         color: #1F2937;
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.85rem !important;
     }
     div[data-testid="stMetric"] {
         background-color: #F8FAFC;
         border: 1px solid #E2E8F0;
         border-radius: 10px;
-        padding: 12px 16px;
+        padding: 10px 14px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        margin-bottom: 0.5rem;
+    }
+    /* Mobile Media Queries */
+    @media (max-width: 768px) {
+        div[data-testid="stMetricValue"] {
+            font-size: 1.25rem !important;
+        }
+        div[data-testid="column"] {
+            width: 100% !important;
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+        }
     }
     .stButton > button {
         background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
         color: white;
         font-weight: 600;
         border-radius: 8px;
-        padding: 0.5rem 1.5rem;
+        padding: 0.6rem 1.2rem;
         border: none;
         box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+        width: 100%;
     }
     .stButton > button:hover {
         background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
@@ -375,12 +399,16 @@ if tickers:
                 color=portfolios_df["Sharpe Ratio"],
                 colorscale='Viridis',
                 showscale=True,
-                colorbar=dict(title="Sharpe Ratio"),
+                colorbar=dict(
+                    title="Sharpe",
+                    thickness=12,
+                    len=0.75
+                ),
                 opacity=0.75
             ),
             text=hover_texts,
             hoverinfo='text',
-            name="10,000 Simulated Portfolios"
+            name="10,000 Portfolios"
         )
     )
 
@@ -391,8 +419,8 @@ if tickers:
                 x=[row['Risk']],
                 y=[row['Return']],
                 mode='markers+text',
-                marker=dict(size=11, symbol='circle', line=dict(width=2, color='black')),
-                text=[f"  <b>{row['Ticker']}</b>"],
+                marker=dict(size=10, symbol='circle', line=dict(width=2, color='black')),
+                text=[f" <b>{row['Ticker']}</b>"],
                 textposition="top right",
                 name=row['Ticker'],
                 hoverinfo='text',
@@ -412,10 +440,17 @@ if tickers:
             gridcolor="#F3F4F6"
         ),
         template="plotly_white",
-        width=1000,
-        height=620,
-        showlegend=True,
-        margin=dict(l=40, r=40, t=40, b=40)
+        autosize=True,
+        height=520,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(l=15, r=15, t=30, b=30),
+        hovermode="closest"
     )
 
     st.plotly_chart(fig, use_container_width=True)
