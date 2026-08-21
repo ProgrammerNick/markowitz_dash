@@ -67,12 +67,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Restored initial exact title and description
 st.title("Portfolio Optimization Simulator")
-st.markdown("""
-This app optimizes portfolio asset weights based on Modern Portfolio Theory (MPT). 
-Analyze historical returns, construct the **Efficient Frontier**, and identify maximum risk-adjusted performance. 
-[[GitHub Documentation & Code](https://github.com/ProgrammerNick/markowitz_dash/)]
-""")
+st.write("This app allows you to optimize portfolio weights based on historical data by utilizing Modern Portfolio Theory. To view the Github for documentation & code, click on this link [here](https://github.com/ProgrammerNick/markowitz_dash/)")
 
 # Initialize session state for tickers and initial guess if not set
 if "tickers" not in st.session_state:
@@ -412,21 +409,22 @@ if tickers:
         )
     )
 
-    # Trace 2: Individual Assets Markers
-    for idx, row in asset_df.iterrows():
-        fig.add_trace(
-            go.Scatter(
-                x=[row['Risk']],
-                y=[row['Return']],
-                mode='markers+text',
-                marker=dict(size=10, symbol='circle', line=dict(width=2, color='black')),
-                text=[f" <b>{row['Ticker']}</b>"],
-                textposition="top right",
-                name=row['Ticker'],
-                hoverinfo='text',
-                hovertext=f"Stock: {row['Ticker']}<br>Return: {row['Return']:.2%}<br>Risk: {row['Risk']:.2%}<br>Sharpe: {row['Sharpe']:.4f}"
-            )
+    # Trace 2: Individual Assets Markers with mobile-optimized centered labels & cliponaxis=False
+    fig.add_trace(
+        go.Scatter(
+            x=asset_df['Risk'],
+            y=asset_df['Return'],
+            mode='markers+text',
+            marker=dict(size=12, color='#DC2626', line=dict(width=2, color='black')),
+            text=[f"<b>{t}</b>" for t in asset_df['Ticker']],
+            textposition="top center",
+            textfont=dict(size=12, color="#1F2937", family="Arial, sans-serif"),
+            cliponaxis=False,
+            name="Individual Stocks",
+            hoverinfo='text',
+            hovertext=[f"Stock: {row['Ticker']}<br>Return: {row['Return']:.2%}<br>Risk: {row['Risk']:.2%}<br>Sharpe: {row['Sharpe']:.4f}" for _, row in asset_df.iterrows()]
         )
+    )
 
     fig.update_layout(
         xaxis=dict(
@@ -449,7 +447,7 @@ if tickers:
             xanchor="right",
             x=1
         ),
-        margin=dict(l=15, r=15, t=30, b=30),
+        margin=dict(l=20, r=20, t=35, b=35),
         hovermode="closest"
     )
 
@@ -511,7 +509,7 @@ if tickers:
     
     st.dataframe(benchmark_summary, use_container_width=True)
 
-    st.subheader("Top 5 Distinct High-Sharpe Portfolios")
+    st.subheader("Top 5 High-Sharpe Portfolios")
     portfolio_counter = 1
     for index, row in distinct_df.reset_index(drop=True).iterrows():
         with st.expander(f"Portfolio {portfolio_counter} — Sharpe Ratio: {row['Sharpe Ratio']:.4f}", expanded=(portfolio_counter == 1)):
