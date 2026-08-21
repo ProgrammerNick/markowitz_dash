@@ -9,11 +9,10 @@ from datetime import datetime, timedelta, date
 # Set up the Streamlit app layout with page config
 st.set_page_config(
     page_title="Portfolio Optimization Simulator",
-    page_icon="📈",
     layout="wide"
 )
 
-# Custom CSS for rich aesthetics and modern typography
+# Custom CSS for modern typography and clean UI card components
 st.markdown("""
 <style>
     div[data-testid="stMetricValue"] {
@@ -44,7 +43,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📈 Portfolio Optimization Simulator")
+st.title("Portfolio Optimization Simulator")
 st.markdown("""
 This app optimizes portfolio asset weights based on Modern Portfolio Theory (MPT). 
 Analyze historical returns, construct the **Efficient Frontier**, and identify maximum risk-adjusted performance. 
@@ -57,8 +56,8 @@ if "tickers" not in st.session_state:
 if "initial_guess" not in st.session_state:
     st.session_state.initial_guess = None
 
-# Input section organized inside a styled expander/container
-with st.expander("⚙️ **Simulation Parameters & Input Configuration**", expanded=True):
+# Input section organized inside a styled container
+with st.expander("Simulation Parameters & Input Configuration", expanded=True):
     col_input1, col_input2 = st.columns([2, 1])
     
     with col_input1:
@@ -104,7 +103,7 @@ with st.expander("⚙️ **Simulation Parameters & Input Configuration**", expan
         st.error("Start Date must be strictly before End Date.")
         st.stop()
 
-    run_button = st.button("🚀 Run Portfolio Optimization", use_container_width=True)
+    run_button = st.button("Run Portfolio Optimization", use_container_width=True)
 
 # Process CSV Upload
 if uploaded_file is not None:
@@ -282,12 +281,12 @@ if tickers:
         st.error(f"Error during portfolio optimization: {str(e)}")
         st.stop()
 
-    # Efficient frontier simulation
+    # Efficient frontier Monte Carlo simulation with Dirichlet uniform simplex sampling
     num_portfolios = 10000
     portfolios = []
+    np.random.seed(42)
     for i in range(num_portfolios):
-        weights = np.random.random(num_assets)
-        weights /= np.sum(weights)
+        weights = np.random.dirichlet(np.ones(num_assets))
         expected_return, portfolio_std = portfolio_performance(weights, returns)
         sharpe = (expected_return - risk_free_rate) / portfolio_std if portfolio_std > 0 else 0
         portfolios.append([expected_return, portfolio_std, sharpe, weights])
@@ -297,6 +296,15 @@ if tickers:
         st.stop()
         
     portfolios_df = pd.DataFrame(portfolios, columns=["Expected Return", "Risk (Std Dev)", "Sharpe Ratio", "Weights"])
+
+    # Calculate individual asset return and std for chart overlay
+    asset_stats = []
+    for t in tickers:
+        ret = returns[t].mean() * 252
+        std = returns[t].std() * np.sqrt(252)
+        sharpe = (ret - risk_free_rate) / std if std > 0 else 0
+        asset_stats.append({'Ticker': t, 'Return': ret, 'Risk': std, 'Sharpe': sharpe})
+    asset_df = pd.DataFrame(asset_stats)
 
     # Strategic Portfolios Calculations
     min_var_idx = portfolios_df["Risk (Std Dev)"].idxmin()
@@ -331,133 +339,158 @@ if tickers:
 
     # --- TOP LEVEL SUMMARY METRICS ---
     st.markdown("---")
-    st.subheader("🎯 Maximum Sharpe Ratio Portfolio (SLSQP Optimal)")
+    st.subheader("Maximum Sharpe Ratio Portfolio (SLSQP Optimal)")
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     col_m1.metric("Optimized Expected Return", f"{optimized_return:.2%}")
     col_m2.metric("Optimized Annual Risk (Std Dev)", f"{optimized_risk:.2%}")
     col_m3.metric("Optimized Sharpe Ratio", f"{optimized_sharpe:.4f}")
     col_m4.metric("Assets Analyzed", f"{len(tickers)}")
 
-    # --- ORGANIZED TABS FOR UI EXCELLENCE ---
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Efficient Frontier Plot",
-        "⚖️ Strategic Benchmarks",
-        "🏆 Top 5 Distinct Portfolios",
-        "📄 Historical Price Data"
-    ])
+    # --- EFFICIENT FRONTIER SCATTER PLOT DISPLAYED DIRECTLY ---
+    st.markdown("---")
+    st.subheader("Simulated Portfolios & Efficient Frontier")
+    
+    hover_texts = []
+    for i, row in portfolios_df.iterrows():
+        weights = row['Weights']
+        weights_str = '<br>'.join([f"{ticker}: {weight:.2%}" for ticker, weight in zip(tickers, weights)])
+        hover_text = (
+            f"Return: {row['Expected Return']:.2%}<br>"
+            f"Risk: {row['Risk (Std Dev)']:.2%}<br>"
+            f"Sharpe Ratio: {row['Sharpe Ratio']:.4f}<br>"
+            f"Weights:<br>{weights_str}"
+        )
+        hover_texts.append(hover_text)
 
-    with tab1:
-        st.markdown("### Efficient Frontier Scatter Plot")
-        hover_texts = []
-        for i, row in portfolios_df.iterrows():
-            weights = row['Weights']
-            weights_str = '<br>'.join([f"{ticker}: {weight:.2%}" for ticker, weight in zip(tickers, weights)])
-            hover_text = (
-                f"Return: {row['Expected Return']:.2%}<br>"
-                f"Risk: {row['Risk (Std Dev)']:.2%}<br>"
-                f"Sharpe Ratio: {row['Sharpe Ratio']:.4f}<br>"
-                f"Weights:<br>{weights_str}"
-            )
-            hover_texts.append(hover_text)
+    fig = go.Figure()
+    
+    # Trace 1: 10,000 Simulated Portfolios
+    fig.add_trace(
+        go.Scatter(
+            x=portfolios_df["Risk (Std Dev)"],
+            y=portfolios_df["Expected Return"],
+            mode='markers',
+            marker=dict(
+                size=5,
+                color=portfolios_df["Sharpe Ratio"],
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title="Sharpe Ratio"),
+                opacity=0.75
+            ),
+            text=hover_texts,
+            hoverinfo='text',
+            name="10,000 Simulated Portfolios"
+        )
+    )
 
-        fig = go.Figure()
+    # Trace 2: Individual Assets Markers
+    for idx, row in asset_df.iterrows():
         fig.add_trace(
             go.Scatter(
-                x=portfolios_df["Risk (Std Dev)"],
-                y=portfolios_df["Expected Return"],
-                mode='markers',
-                marker=dict(
-                    size=5,
-                    color=portfolios_df["Sharpe Ratio"],
-                    colorscale='Viridis',
-                    showscale=True,
-                    colorbar=dict(title="Sharpe Ratio"),
-                ),
-                text=hover_texts,
+                x=[row['Risk']],
+                y=[row['Return']],
+                mode='markers+text',
+                marker=dict(size=11, symbol='circle', line=dict(width=2, color='black')),
+                text=[f"  <b>{row['Ticker']}</b>"],
+                textposition="top right",
+                name=row['Ticker'],
                 hoverinfo='text',
-                name="Simulated Portfolios"
+                hovertext=f"Stock: {row['Ticker']}<br>Return: {row['Return']:.2%}<br>Risk: {row['Risk']:.2%}<br>Sharpe: {row['Sharpe']:.4f}"
             )
         )
 
-        fig.update_layout(
-            title=dict(
-                text="Simulated Portfolios & Efficient Frontier",
-                font=dict(size=18, color="#1F2937")
-            ),
-            xaxis_title="Risk (Standard Deviation)",
-            yaxis_title="Expected Return",
-            template="plotly_white",
-            width=900,
-            height=600,
-            showlegend=False,
-            margin=dict(l=40, r=40, t=60, b=40)
-        )
+    fig.update_layout(
+        xaxis=dict(
+            title="Annualized Risk (Standard Deviation)",
+            tickformat=".1%",
+            gridcolor="#F3F4F6"
+        ),
+        yaxis=dict(
+            title="Annualized Expected Return",
+            tickformat=".1%",
+            gridcolor="#F3F4F6"
+        ),
+        template="plotly_white",
+        width=1000,
+        height=620,
+        showlegend=True,
+        margin=dict(l=40, r=40, t=40, b=40)
+    )
 
-        st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
+    col_df1, col_df2 = st.columns([1, 1])
+    with col_df1:
         st.subheader("Optimal Asset Weights (Max Sharpe Ratio)")
         optimized_weights_df = pd.DataFrame({
             "Ticker": tickers,
             "Optimized Weight": [f"{w:.2%}" for w in optimized_weights]
         })
         st.dataframe(optimized_weights_df, use_container_width=True)
-
-    with tab2:
-        st.markdown("### Strategic Benchmark Portfolios Comparison")
-        st.write("Compare the optimal Sharpe ratio allocation against key investment strategies:")
-
-        benchmark_summary = pd.DataFrame([
-            {
-                "Strategy": "Maximum Sharpe Ratio (SLSQP Optimal)",
-                "Expected Return": f"{optimized_return:.2%}",
-                "Risk (Std Dev)": f"{optimized_risk:.2%}",
-                "Sharpe Ratio": f"{optimized_sharpe:.4f}",
-                "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, optimized_weights)])
-            },
-            {
-                "Strategy": "Minimum Volatility (Lowest Risk)",
-                "Expected Return": f"{min_var_row['Expected Return']:.2%}",
-                "Risk (Std Dev)": f"{min_var_row['Risk (Std Dev)']:.2%}",
-                "Sharpe Ratio": f"{min_var_row['Sharpe Ratio']:.4f}",
-                "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, min_var_row['Weights'])])
-            },
-            {
-                "Strategy": "Equal Weight (1/N Benchmark)",
-                "Expected Return": f"{eq_ret:.2%}",
-                "Risk (Std Dev)": f"{eq_std:.2%}",
-                "Sharpe Ratio": f"{eq_sharpe:.4f}",
-                "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, eq_w)])
-            },
-            {
-                "Strategy": "Maximum Return Focus",
-                "Expected Return": f"{max_ret_row['Expected Return']:.2%}",
-                "Risk (Std Dev)": f"{max_ret_row['Risk (Std Dev)']:.2%}",
-                "Sharpe Ratio": f"{max_ret_row['Sharpe Ratio']:.4f}",
-                "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, max_ret_row['Weights'])])
-            }
-        ])
         
-        st.dataframe(benchmark_summary, use_container_width=True)
+    with col_df2:
+        st.subheader("Individual Asset Statistics")
+        asset_summary_df = pd.DataFrame({
+            "Ticker": asset_df["Ticker"],
+            "Annual Return": [f"{r:.2%}" for r in asset_df["Return"]],
+            "Annual Risk": [f"{s:.2%}" for s in asset_df["Risk"]],
+            "Sharpe Ratio": [f"{sh:.4f}" for sh in asset_df["Sharpe"]]
+        })
+        st.dataframe(asset_summary_df, use_container_width=True)
 
-    with tab3:
-        st.markdown("### Top 5 Distinct High-Sharpe Portfolios")
-        st.write("Top simulated portfolios filtered for distinct asset weight allocations:")
-        
-        portfolio_counter = 1
-        for index, row in distinct_df.reset_index(drop=True).iterrows():
-            with st.expander(f"🏆 Portfolio {portfolio_counter} — Sharpe Ratio: {row['Sharpe Ratio']:.4f}", expanded=(portfolio_counter == 1)):
-                c1, c2, c3 = st.columns(3)
-                c1.write(f"**Expected Return:** {row['Expected Return']:.2%}")
-                c2.write(f"**Risk (Std Dev):** {row['Risk (Std Dev)']:.2%}")
-                c3.write(f"**Sharpe Ratio:** {row['Sharpe Ratio']:.4f}")
-                weights_df = pd.DataFrame({"Ticker": tickers, "Weight": [f"{w:.2%}" for w in row['Weights']]})
-                st.dataframe(weights_df, use_container_width=True)
-            portfolio_counter += 1
+    # --- STRATEGIC BENCHMARKS & TOP PORTFOLIOS SECTION ---
+    st.markdown("---")
+    st.subheader("Strategic Benchmark Portfolios Comparison")
+    
+    benchmark_summary = pd.DataFrame([
+        {
+            "Strategy": "Maximum Sharpe Ratio (SLSQP Optimal)",
+            "Expected Return": f"{optimized_return:.2%}",
+            "Risk (Std Dev)": f"{optimized_risk:.2%}",
+            "Sharpe Ratio": f"{optimized_sharpe:.4f}",
+            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, optimized_weights)])
+        },
+        {
+            "Strategy": "Minimum Volatility (Lowest Risk)",
+            "Expected Return": f"{min_var_row['Expected Return']:.2%}",
+            "Risk (Std Dev)": f"{min_var_row['Risk (Std Dev)']:.2%}",
+            "Sharpe Ratio": f"{min_var_row['Sharpe Ratio']:.4f}",
+            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, min_var_row['Weights'])])
+        },
+        {
+            "Strategy": "Equal Weight (1/N Benchmark)",
+            "Expected Return": f"{eq_ret:.2%}",
+            "Risk (Std Dev)": f"{eq_std:.2%}",
+            "Sharpe Ratio": f"{eq_sharpe:.4f}",
+            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, eq_w)])
+        },
+        {
+            "Strategy": "Maximum Return Focus",
+            "Expected Return": f"{max_ret_row['Expected Return']:.2%}",
+            "Risk (Std Dev)": f"{max_ret_row['Risk (Std Dev)']:.2%}",
+            "Sharpe Ratio": f"{max_ret_row['Sharpe Ratio']:.4f}",
+            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, max_ret_row['Weights'])])
+        }
+    ])
+    
+    st.dataframe(benchmark_summary, use_container_width=True)
 
-    with tab4:
+    st.subheader("Top 5 Distinct High-Sharpe Portfolios")
+    portfolio_counter = 1
+    for index, row in distinct_df.reset_index(drop=True).iterrows():
+        with st.expander(f"Portfolio {portfolio_counter} — Sharpe Ratio: {row['Sharpe Ratio']:.4f}", expanded=(portfolio_counter == 1)):
+            c1, c2, c3 = st.columns(3)
+            c1.write(f"**Expected Return:** {row['Expected Return']:.2%}")
+            c2.write(f"**Risk (Std Dev):** {row['Risk (Std Dev)']:.2%}")
+            c3.write(f"**Sharpe Ratio:** {row['Sharpe Ratio']:.4f}")
+            weights_df = pd.DataFrame({"Ticker": tickers, "Weight": [f"{w:.2%}" for w in row['Weights']]})
+            st.dataframe(weights_df, use_container_width=True)
+        portfolio_counter += 1
+
+    with st.expander("Historical Price & Returns Data Preview"):
         st.markdown("### Historical Adjusted Close Price Data")
         st.dataframe(data, use_container_width=True)
-        
         st.markdown("### Daily Percentage Returns")
         st.dataframe(returns, use_container_width=True)
 
