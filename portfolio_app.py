@@ -107,7 +107,7 @@ with st.expander("Simulation Parameters & Input Configuration", expanded=True):
     with col2:
         end_date = st.date_input(
             "End Date",
-            value=pd.to_datetime("2024-10-01").date(),
+            value=max_date,
             min_value=pd.to_datetime("1962-01-01").date(),
             max_value=max_date
         )
