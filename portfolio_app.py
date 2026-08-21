@@ -6,11 +6,50 @@ from scipy.optimize import minimize
 import plotly.graph_objects as go
 from datetime import datetime, timedelta, date
 
-# Set up the Streamlit app layout
-st.set_page_config(page_title="Portfolio Optimization Simulator", layout="wide")
+# Set up the Streamlit app layout with page config
+st.set_page_config(
+    page_title="Portfolio Optimization Simulator",
+    page_icon="📈",
+    layout="wide"
+)
 
-st.title("Portfolio Optimization Simulator")
-st.write("This app allows you to optimize portfolio weights based on historical data by utilizing Modern Portfolio Theory. To view the Github for documentation & code, click on this link [here](https://github.com/ProgrammerNick/markowitz_dash/)")
+# Custom CSS for rich aesthetics and modern typography
+st.markdown("""
+<style>
+    div[data-testid="stMetricValue"] {
+        font-size: 1.8rem !important;
+        font-weight: 700 !important;
+        color: #1F2937;
+    }
+    div[data-testid="stMetric"] {
+        background-color: #F8FAFC;
+        border: 1px solid #E2E8F0;
+        border-radius: 10px;
+        padding: 12px 16px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .stButton > button {
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+        color: white;
+        font-weight: 600;
+        border-radius: 8px;
+        padding: 0.5rem 1.5rem;
+        border: none;
+        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+    }
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%);
+        color: white;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("📈 Portfolio Optimization Simulator")
+st.markdown("""
+This app optimizes portfolio asset weights based on Modern Portfolio Theory (MPT). 
+Analyze historical returns, construct the **Efficient Frontier**, and identify maximum risk-adjusted performance. 
+[[GitHub Documentation & Code](https://github.com/ProgrammerNick/markowitz_dash/)]
+""")
 
 # Initialize session state for tickers and initial guess if not set
 if "tickers" not in st.session_state:
@@ -18,41 +57,54 @@ if "tickers" not in st.session_state:
 if "initial_guess" not in st.session_state:
     st.session_state.initial_guess = None
 
-# Option to manually input tickers
-tickers_input = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOGL):", value="AAPL, MSFT, GOOGL")
-max_date = date.today()
+# Input section organized inside a styled expander/container
+with st.expander("⚙️ **Simulation Parameters & Input Configuration**", expanded=True):
+    col_input1, col_input2 = st.columns([2, 1])
+    
+    with col_input1:
+        tickers_input = st.text_input(
+            "Enter Ticker Symbols (comma-separated):",
+            value="AAPL, MSFT, GOOGL",
+            help="Enter valid stock/ETF tickers separated by commas, e.g. AAPL, MSFT, NVDA, SPY"
+        )
+    
+    with col_input2:
+        uploaded_file = st.file_uploader(
+            "Or Upload Portfolio CSV (optional)",
+            type=["csv"],
+            help="CSV with 'Ticker' column and optional 'Weight' column"
+        )
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    start_date = st.date_input(
-        "Start Date",
-        value=pd.to_datetime("2021-01-01").date(),
-        min_value=pd.to_datetime("1962-01-01").date(),
-        max_value=max_date
-    )
-with col2:
-    end_date = st.date_input(
-        "End Date",
-        value=pd.to_datetime("2024-10-01").date(),
-        min_value=pd.to_datetime("1962-01-01").date(),
-        max_value=max_date
-    )
-with col3:
-    risk_free_rate = st.number_input(
-        "Enter risk free rate (annual decimal):",
-        value=0.04242,
-        format="%.5f",
-        step=0.001
-    )
+    max_date = date.today()
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        start_date = st.date_input(
+            "Start Date",
+            value=pd.to_datetime("2021-01-01").date(),
+            min_value=pd.to_datetime("1962-01-01").date(),
+            max_value=max_date
+        )
+    with col2:
+        end_date = st.date_input(
+            "End Date",
+            value=pd.to_datetime("2024-10-01").date(),
+            min_value=pd.to_datetime("1962-01-01").date(),
+            max_value=max_date
+        )
+    with col3:
+        risk_free_rate = st.number_input(
+            "Risk-Free Rate (Annual Decimal):",
+            value=0.04242,
+            format="%.5f",
+            step=0.001,
+            help="Current benchmark risk-free rate, e.g. 0.0424 for 4.24%"
+        )
 
-if start_date >= end_date:
-    st.error("Start Date must be strictly before End Date.")
-    st.stop()
+    if start_date >= end_date:
+        st.error("Start Date must be strictly before End Date.")
+        st.stop()
 
-run_button = st.button("Run Simulation")
-
-# Option to upload portfolio CSV
-uploaded_file = st.file_uploader("Or upload your portfolio CSV - tickers in the first column, weights in the second column (optional)", type=["csv"])
+    run_button = st.button("🚀 Run Portfolio Optimization", use_container_width=True)
 
 # Process CSV Upload
 if uploaded_file is not None:
@@ -97,7 +149,6 @@ def fetch_stock_data(tickers, start_date, end_date):
         if raw_data is None or raw_data.empty:
             return None, [], tickers, "No data returned for the specified tickers and date range."
 
-        # Extract Close price data handling MultiIndex vs SingleIndex
         if isinstance(raw_data.columns, pd.MultiIndex):
             if 'Close' in raw_data.columns.levels[0]:
                 data = raw_data['Close'].copy()
@@ -139,9 +190,8 @@ initial_guess = st.session_state.initial_guess
 
 # Proceed with optimization if tickers are provided
 if tickers:
-    st.write(f"Fetching historical price data for tickers: {', '.join(tickers)}...")
-    
-    data, valid_tickers, invalid_tickers, error_message = fetch_stock_data(tickers, start_date, end_date)
+    with st.spinner(f"Fetching historical price data for {', '.join(tickers)}..."):
+        data, valid_tickers, invalid_tickers, error_message = fetch_stock_data(tickers, start_date, end_date)
     
     if invalid_tickers:
         st.warning(f"The following tickers were not recognized or had no price data: {', '.join(invalid_tickers)}")
@@ -163,7 +213,6 @@ if tickers:
         tickers = valid_tickers
         initial_guess = np.ones(len(tickers)) / len(tickers)
 
-    # Check if we have sufficient data points
     if len(data) < 2:
         st.error("Insufficient data points for analysis. Please try a wider date range.")
         st.stop()
@@ -173,9 +222,6 @@ if tickers:
         if len(data) < 2:
             st.error("Insufficient overlapping data points after removing missing values. Please try a different date range or tickers.")
             st.stop()
-        first_date = data.index[0].strftime('%Y/%m/%d')
-        last_date = data.index[-1].strftime('%Y/%m/%d')
-        st.warning(f"Some stocks have missing data. Using only complete data periods.\n\nDate range being used: {first_date} to {last_date}")
 
     # Calculate simple percentage returns (standard for linear portfolio aggregation Rp = sum(w_i * R_i))
     returns = data.pct_change().dropna()
@@ -204,7 +250,7 @@ if tickers:
     else:
         initial_guess = np.array(initial_guess) / np.sum(initial_guess)
 
-    # Perform optimization with error handling
+    # Perform optimization
     try:
         result = minimize(
             negative_sharpe_ratio,
@@ -217,7 +263,6 @@ if tickers:
         
         if not result.success:
             st.warning("Optimization did not converge successfully. Results may not be optimal.")
-            st.write(f"Optimization message: {result.message}")
         
         optimized_weights = result.x
         
@@ -233,20 +278,11 @@ if tickers:
             
         optimized_sharpe = -result.fun
         
-        col_res1, col_res2, col_res3 = st.columns(3)
-        col_res1.metric("Optimized Annual Return", f"{optimized_return:.2%}")
-        col_res2.metric("Optimized Annual Risk (Std Dev)", f"{optimized_risk:.2%}")
-        col_res3.metric("Optimized Sharpe Ratio", f"{optimized_sharpe:.4f}")
-
-        optimized_weights_df = pd.DataFrame({"Ticker": tickers, "Optimized Weight": [f"{w:.2%}" for w in optimized_weights]})
-        st.subheader("Optimized Portfolio Weights (Maximum Sharpe Ratio)")
-        st.dataframe(optimized_weights_df, use_container_width=True)
     except Exception as e:
         st.error(f"Error during portfolio optimization: {str(e)}")
         st.stop()
 
     # Efficient frontier simulation
-    st.subheader("Efficient Frontier")
     num_portfolios = 10000
     portfolios = []
     for i in range(num_portfolios):
@@ -262,67 +298,18 @@ if tickers:
         
     portfolios_df = pd.DataFrame(portfolios, columns=["Expected Return", "Risk (Std Dev)", "Sharpe Ratio", "Weights"])
 
-    hover_texts = []
-    for i, row in portfolios_df.iterrows():
-        weights = row['Weights']
-        weights_str = '<br>'.join([f"{ticker}: {weight:.2%}" for ticker, weight in zip(tickers, weights)])
-        hover_text = (
-            f"Return: {row['Expected Return']:.2%}<br>"
-            f"Risk: {row['Risk (Std Dev)']:.2%}<br>"
-            f"Sharpe Ratio: {row['Sharpe Ratio']:.4f}<br>"
-            f"Weights:<br>{weights_str}"
-        )
-        hover_texts.append(hover_text)
+    # Strategic Portfolios Calculations
+    min_var_idx = portfolios_df["Risk (Std Dev)"].idxmin()
+    min_var_row = portfolios_df.loc[min_var_idx]
+    
+    eq_w = np.ones(num_assets) / num_assets
+    eq_ret, eq_std = portfolio_performance(eq_w, returns)
+    eq_sharpe = (eq_ret - risk_free_rate) / eq_std if eq_std > 0 else 0
+    
+    max_ret_idx = portfolios_df["Expected Return"].idxmax()
+    max_ret_row = portfolios_df.loc[max_ret_idx]
 
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=portfolios_df["Risk (Std Dev)"],
-            y=portfolios_df["Expected Return"],
-            mode='markers',
-            marker=dict(
-                size=5,
-                color=portfolios_df["Sharpe Ratio"],
-                colorscale='Viridis',
-                showscale=True,
-                colorbar=dict(title="Sharpe Ratio"),
-            ),
-            text=hover_texts,
-            hoverinfo='text',
-            name="Simulated Portfolios"
-        )
-    )
-
-    # Highlight optimal portfolio point
-    fig.add_trace(
-        go.Scatter(
-            x=[optimized_risk],
-            y=[optimized_return],
-            mode='markers',
-            marker=dict(
-                size=14,
-                color='red',
-                symbol='star',
-                line=dict(width=2, color='black')
-            ),
-            name="Maximum Sharpe Ratio",
-            text=[f"Optimal Portfolio<br>Return: {optimized_return:.2%}<br>Risk: {optimized_risk:.2%}<br>Sharpe: {optimized_sharpe:.4f}"],
-            hoverinfo='text'
-        )
-    )
-
-    fig.update_layout(
-        title="Simulated Portfolios (Efficient Frontier)",
-        xaxis_title="Risk (Standard Deviation)",
-        yaxis_title="Return",
-        width=800,
-        height=600,
-        showlegend=True,
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Filter top 5 distinct portfolios by allocation distance so Sharpe ratios and weights vary meaningfully
+    # Filter top 5 distinct portfolios by allocation distance
     df_sorted = portfolios_df.sort_values(by="Sharpe Ratio", ascending=False).reset_index(drop=True)
     distinct_top5 = []
     for idx, row in df_sorted.iterrows():
@@ -332,7 +319,7 @@ if tickers:
         else:
             is_distinct = True
             for prev in distinct_top5:
-                if np.max(np.abs(w - prev['Weights'])) < 0.05:  # Require at least 5% allocation difference
+                if np.max(np.abs(w - prev['Weights'])) < 0.05:
                     is_distinct = False
                     break
             if is_distinct:
@@ -342,66 +329,137 @@ if tickers:
 
     distinct_df = pd.DataFrame(distinct_top5)
 
-    st.subheader("Top 5 Distinct High-Sharpe Portfolios")
-    portfolio_counter = 1
-    for index, row in distinct_df.reset_index(drop=True).iterrows():
-        with st.expander(f"Portfolio {portfolio_counter} (Sharpe: {row['Sharpe Ratio']:.4f})", expanded=(portfolio_counter == 1)):
-            st.write(f"**Expected Return:** {row['Expected Return']:.2%}")
-            st.write(f"**Risk (Std Dev):** {row['Risk (Std Dev)']:.2%}")
-            st.write(f"**Sharpe Ratio:** {row['Sharpe Ratio']:.4f}")
-            weights_df = pd.DataFrame({"Ticker": tickers, "Weight": [f"{w:.2%}" for w in row['Weights']]})
-            st.dataframe(weights_df, use_container_width=True)
-        portfolio_counter += 1
+    # --- TOP LEVEL SUMMARY METRICS ---
+    st.markdown("---")
+    st.subheader("🎯 Maximum Sharpe Ratio Portfolio (SLSQP Optimal)")
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    col_m1.metric("Optimized Expected Return", f"{optimized_return:.2%}")
+    col_m2.metric("Optimized Annual Risk (Std Dev)", f"{optimized_risk:.2%}")
+    col_m3.metric("Optimized Sharpe Ratio", f"{optimized_sharpe:.4f}")
+    col_m4.metric("Assets Analyzed", f"{len(tickers)}")
 
-    # Key Strategic Benchmark Portfolios Section
-    st.subheader("Strategic Benchmark Portfolios")
-    
-    # 1. Max Sharpe
-    # 2. Min Volatility
-    min_var_idx = portfolios_df["Risk (Std Dev)"].idxmin()
-    min_var_row = portfolios_df.loc[min_var_idx]
-    
-    # 3. Equal Weight
-    eq_w = np.ones(num_assets) / num_assets
-    eq_ret, eq_std = portfolio_performance(eq_w, returns)
-    eq_sharpe = (eq_ret - risk_free_rate) / eq_std if eq_std > 0 else 0
-    
-    # 4. Max Return
-    max_ret_idx = portfolios_df["Expected Return"].idxmax()
-    max_ret_row = portfolios_df.loc[max_ret_idx]
-
-    benchmark_summary = pd.DataFrame([
-        {
-            "Strategy": "Maximum Sharpe Ratio (SLSQP Optimal)",
-            "Expected Return": f"{optimized_return:.2%}",
-            "Risk (Std Dev)": f"{optimized_risk:.2%}",
-            "Sharpe Ratio": f"{optimized_sharpe:.4f}",
-            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, optimized_weights)])
-        },
-        {
-            "Strategy": "Minimum Volatility (Lowest Risk)",
-            "Expected Return": f"{min_var_row['Expected Return']:.2%}",
-            "Risk (Std Dev)": f"{min_var_row['Risk (Std Dev)']:.2%}",
-            "Sharpe Ratio": f"{min_var_row['Sharpe Ratio']:.4f}",
-            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, min_var_row['Weights'])])
-        },
-        {
-            "Strategy": "Equal Weight (1/N Benchmark)",
-            "Expected Return": f"{eq_ret:.2%}",
-            "Risk (Std Dev)": f"{eq_std:.2%}",
-            "Sharpe Ratio": f"{eq_sharpe:.4f}",
-            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, eq_w)])
-        },
-        {
-            "Strategy": "Maximum Return Focus",
-            "Expected Return": f"{max_ret_row['Expected Return']:.2%}",
-            "Risk (Std Dev)": f"{max_ret_row['Risk (Std Dev)']:.2%}",
-            "Sharpe Ratio": f"{max_ret_row['Sharpe Ratio']:.4f}",
-            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, max_ret_row['Weights'])])
-        }
+    # --- ORGANIZED TABS FOR UI EXCELLENCE ---
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Efficient Frontier Plot",
+        "⚖️ Strategic Benchmarks",
+        "🏆 Top 5 Distinct Portfolios",
+        "📄 Historical Price Data"
     ])
-    
-    st.dataframe(benchmark_summary, use_container_width=True)
+
+    with tab1:
+        st.markdown("### Efficient Frontier Scatter Plot")
+        hover_texts = []
+        for i, row in portfolios_df.iterrows():
+            weights = row['Weights']
+            weights_str = '<br>'.join([f"{ticker}: {weight:.2%}" for ticker, weight in zip(tickers, weights)])
+            hover_text = (
+                f"Return: {row['Expected Return']:.2%}<br>"
+                f"Risk: {row['Risk (Std Dev)']:.2%}<br>"
+                f"Sharpe Ratio: {row['Sharpe Ratio']:.4f}<br>"
+                f"Weights:<br>{weights_str}"
+            )
+            hover_texts.append(hover_text)
+
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=portfolios_df["Risk (Std Dev)"],
+                y=portfolios_df["Expected Return"],
+                mode='markers',
+                marker=dict(
+                    size=5,
+                    color=portfolios_df["Sharpe Ratio"],
+                    colorscale='Viridis',
+                    showscale=True,
+                    colorbar=dict(title="Sharpe Ratio"),
+                ),
+                text=hover_texts,
+                hoverinfo='text',
+                name="Simulated Portfolios"
+            )
+        )
+
+        fig.update_layout(
+            title=dict(
+                text="Simulated Portfolios & Efficient Frontier",
+                font=dict(size=18, color="#1F2937")
+            ),
+            xaxis_title="Risk (Standard Deviation)",
+            yaxis_title="Expected Return",
+            template="plotly_white",
+            width=900,
+            height=600,
+            showlegend=False,
+            margin=dict(l=40, r=40, t=60, b=40)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Optimal Asset Weights (Max Sharpe Ratio)")
+        optimized_weights_df = pd.DataFrame({
+            "Ticker": tickers,
+            "Optimized Weight": [f"{w:.2%}" for w in optimized_weights]
+        })
+        st.dataframe(optimized_weights_df, use_container_width=True)
+
+    with tab2:
+        st.markdown("### Strategic Benchmark Portfolios Comparison")
+        st.write("Compare the optimal Sharpe ratio allocation against key investment strategies:")
+
+        benchmark_summary = pd.DataFrame([
+            {
+                "Strategy": "Maximum Sharpe Ratio (SLSQP Optimal)",
+                "Expected Return": f"{optimized_return:.2%}",
+                "Risk (Std Dev)": f"{optimized_risk:.2%}",
+                "Sharpe Ratio": f"{optimized_sharpe:.4f}",
+                "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, optimized_weights)])
+            },
+            {
+                "Strategy": "Minimum Volatility (Lowest Risk)",
+                "Expected Return": f"{min_var_row['Expected Return']:.2%}",
+                "Risk (Std Dev)": f"{min_var_row['Risk (Std Dev)']:.2%}",
+                "Sharpe Ratio": f"{min_var_row['Sharpe Ratio']:.4f}",
+                "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, min_var_row['Weights'])])
+            },
+            {
+                "Strategy": "Equal Weight (1/N Benchmark)",
+                "Expected Return": f"{eq_ret:.2%}",
+                "Risk (Std Dev)": f"{eq_std:.2%}",
+                "Sharpe Ratio": f"{eq_sharpe:.4f}",
+                "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, eq_w)])
+            },
+            {
+                "Strategy": "Maximum Return Focus",
+                "Expected Return": f"{max_ret_row['Expected Return']:.2%}",
+                "Risk (Std Dev)": f"{max_ret_row['Risk (Std Dev)']:.2%}",
+                "Sharpe Ratio": f"{max_ret_row['Sharpe Ratio']:.4f}",
+                "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, max_ret_row['Weights'])])
+            }
+        ])
+        
+        st.dataframe(benchmark_summary, use_container_width=True)
+
+    with tab3:
+        st.markdown("### Top 5 Distinct High-Sharpe Portfolios")
+        st.write("Top simulated portfolios filtered for distinct asset weight allocations:")
+        
+        portfolio_counter = 1
+        for index, row in distinct_df.reset_index(drop=True).iterrows():
+            with st.expander(f"🏆 Portfolio {portfolio_counter} — Sharpe Ratio: {row['Sharpe Ratio']:.4f}", expanded=(portfolio_counter == 1)):
+                c1, c2, c3 = st.columns(3)
+                c1.write(f"**Expected Return:** {row['Expected Return']:.2%}")
+                c2.write(f"**Risk (Std Dev):** {row['Risk (Std Dev)']:.2%}")
+                c3.write(f"**Sharpe Ratio:** {row['Sharpe Ratio']:.4f}")
+                weights_df = pd.DataFrame({"Ticker": tickers, "Weight": [f"{w:.2%}" for w in row['Weights']]})
+                st.dataframe(weights_df, use_container_width=True)
+            portfolio_counter += 1
+
+    with tab4:
+        st.markdown("### Historical Adjusted Close Price Data")
+        st.dataframe(data, use_container_width=True)
+        
+        st.markdown("### Daily Percentage Returns")
+        st.dataframe(returns, use_container_width=True)
 
 else:
-    st.info("Please enter tickers and click 'Run Simulation' or upload a portfolio CSV to display optimization data.")
+    st.info("Please enter tickers and click 'Run Portfolio Optimization' or upload a portfolio CSV to display optimization data.")
