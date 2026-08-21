@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 import plotly.graph_objects as go
 from datetime import datetime, timedelta, date
@@ -178,20 +177,20 @@ if tickers:
         last_date = data.index[-1].strftime('%Y/%m/%d')
         st.warning(f"Some stocks have missing data. Using only complete data periods.\n\nDate range being used: {first_date} to {last_date}")
 
-    # Calculate total returns using log returns
-    total_returns = np.log(data / data.shift(1)).dropna()
+    # Calculate simple percentage returns (standard for linear portfolio aggregation Rp = sum(w_i * R_i))
+    returns = data.pct_change().dropna()
     
-    if len(total_returns) < 2:
+    if len(returns) < 2:
         st.error("Insufficient data for returns calculation. Please try a different date range.")
         st.stop()
 
-    def portfolio_performance(weights, total_returns):
-        expected_return = np.sum(weights * total_returns.mean()) * 252
-        portfolio_std = np.sqrt(np.dot(weights.T, np.dot(total_returns.cov() * 252, weights)))
+    def portfolio_performance(weights, returns_df):
+        expected_return = np.sum(weights * returns_df.mean()) * 252
+        portfolio_std = np.sqrt(np.dot(weights.T, np.dot(returns_df.cov() * 252, weights)))
         return expected_return, portfolio_std
 
-    def negative_sharpe_ratio(weights, total_returns, rf_rate):
-        expected_return, portfolio_std = portfolio_performance(weights, total_returns)
+    def negative_sharpe_ratio(weights, returns_df, rf_rate):
+        expected_return, portfolio_std = portfolio_performance(weights, returns_df)
         if portfolio_std == 0 or np.isnan(portfolio_std):
             return 1e9
         return -(expected_return - rf_rate) / portfolio_std
@@ -210,7 +209,7 @@ if tickers:
         result = minimize(
             negative_sharpe_ratio,
             initial_guess,
-            args=(total_returns, risk_free_rate),
+            args=(returns, risk_free_rate),
             method='SLSQP',
             bounds=bounds,
             constraints=constraints
@@ -226,7 +225,7 @@ if tickers:
             st.error("Optimization produced invalid weights. Please try different tickers or date range.")
             st.stop()
             
-        optimized_return, optimized_risk = portfolio_performance(optimized_weights, total_returns)
+        optimized_return, optimized_risk = portfolio_performance(optimized_weights, returns)
         
         if np.isnan(optimized_return) or np.isnan(optimized_risk) or np.isnan(result.fun):
             st.error("Optimization produced invalid results. Please try different tickers or date range.")
@@ -240,7 +239,7 @@ if tickers:
         col_res3.metric("Optimized Sharpe Ratio", f"{optimized_sharpe:.4f}")
 
         optimized_weights_df = pd.DataFrame({"Ticker": tickers, "Optimized Weight": [f"{w:.2%}" for w in optimized_weights]})
-        st.subheader("Optimized Portfolio Weights")
+        st.subheader("Optimized Portfolio Weights (Maximum Sharpe Ratio)")
         st.dataframe(optimized_weights_df, use_container_width=True)
     except Exception as e:
         st.error(f"Error during portfolio optimization: {str(e)}")
@@ -249,16 +248,12 @@ if tickers:
     # Efficient frontier simulation
     st.subheader("Efficient Frontier")
     num_portfolios = 10000
-    results = np.zeros((3, num_portfolios))
     portfolios = []
     for i in range(num_portfolios):
         weights = np.random.random(num_assets)
         weights /= np.sum(weights)
-        expected_return, portfolio_std = portfolio_performance(weights, total_returns)
+        expected_return, portfolio_std = portfolio_performance(weights, returns)
         sharpe = (expected_return - risk_free_rate) / portfolio_std if portfolio_std > 0 else 0
-        results[0, i] = portfolio_std
-        results[1, i] = expected_return
-        results[2, i] = sharpe
         portfolios.append([expected_return, portfolio_std, sharpe, weights])
 
     if len(portfolios) == 0:
@@ -327,11 +322,29 @@ if tickers:
 
     st.plotly_chart(fig, use_container_width=True)
 
-    top_5_portfolios = portfolios_df.sort_values(by="Sharpe Ratio", ascending=False).head(5)
+    # Filter top 5 distinct portfolios by allocation distance so Sharpe ratios and weights vary meaningfully
+    df_sorted = portfolios_df.sort_values(by="Sharpe Ratio", ascending=False).reset_index(drop=True)
+    distinct_top5 = []
+    for idx, row in df_sorted.iterrows():
+        w = row['Weights']
+        if not distinct_top5:
+            distinct_top5.append(row)
+        else:
+            is_distinct = True
+            for prev in distinct_top5:
+                if np.max(np.abs(w - prev['Weights'])) < 0.05:  # Require at least 5% allocation difference
+                    is_distinct = False
+                    break
+            if is_distinct:
+                distinct_top5.append(row)
+        if len(distinct_top5) == 5:
+            break
 
-    st.subheader("Top 5 Portfolios Based on Sharpe Ratio")
+    distinct_df = pd.DataFrame(distinct_top5)
+
+    st.subheader("Top 5 Distinct High-Sharpe Portfolios")
     portfolio_counter = 1
-    for index, row in top_5_portfolios.iterrows():
+    for index, row in distinct_df.reset_index(drop=True).iterrows():
         with st.expander(f"Portfolio {portfolio_counter} (Sharpe: {row['Sharpe Ratio']:.4f})", expanded=(portfolio_counter == 1)):
             st.write(f"**Expected Return:** {row['Expected Return']:.2%}")
             st.write(f"**Risk (Std Dev):** {row['Risk (Std Dev)']:.2%}")
@@ -339,5 +352,56 @@ if tickers:
             weights_df = pd.DataFrame({"Ticker": tickers, "Weight": [f"{w:.2%}" for w in row['Weights']]})
             st.dataframe(weights_df, use_container_width=True)
         portfolio_counter += 1
+
+    # Key Strategic Benchmark Portfolios Section
+    st.subheader("Strategic Benchmark Portfolios")
+    
+    # 1. Max Sharpe
+    # 2. Min Volatility
+    min_var_idx = portfolios_df["Risk (Std Dev)"].idxmin()
+    min_var_row = portfolios_df.loc[min_var_idx]
+    
+    # 3. Equal Weight
+    eq_w = np.ones(num_assets) / num_assets
+    eq_ret, eq_std = portfolio_performance(eq_w, returns)
+    eq_sharpe = (eq_ret - risk_free_rate) / eq_std if eq_std > 0 else 0
+    
+    # 4. Max Return
+    max_ret_idx = portfolios_df["Expected Return"].idxmax()
+    max_ret_row = portfolios_df.loc[max_ret_idx]
+
+    benchmark_summary = pd.DataFrame([
+        {
+            "Strategy": "Maximum Sharpe Ratio (SLSQP Optimal)",
+            "Expected Return": f"{optimized_return:.2%}",
+            "Risk (Std Dev)": f"{optimized_risk:.2%}",
+            "Sharpe Ratio": f"{optimized_sharpe:.4f}",
+            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, optimized_weights)])
+        },
+        {
+            "Strategy": "Minimum Volatility (Lowest Risk)",
+            "Expected Return": f"{min_var_row['Expected Return']:.2%}",
+            "Risk (Std Dev)": f"{min_var_row['Risk (Std Dev)']:.2%}",
+            "Sharpe Ratio": f"{min_var_row['Sharpe Ratio']:.4f}",
+            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, min_var_row['Weights'])])
+        },
+        {
+            "Strategy": "Equal Weight (1/N Benchmark)",
+            "Expected Return": f"{eq_ret:.2%}",
+            "Risk (Std Dev)": f"{eq_std:.2%}",
+            "Sharpe Ratio": f"{eq_sharpe:.4f}",
+            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, eq_w)])
+        },
+        {
+            "Strategy": "Maximum Return Focus",
+            "Expected Return": f"{max_ret_row['Expected Return']:.2%}",
+            "Risk (Std Dev)": f"{max_ret_row['Risk (Std Dev)']:.2%}",
+            "Sharpe Ratio": f"{max_ret_row['Sharpe Ratio']:.4f}",
+            "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, max_ret_row['Weights'])])
+        }
+    ])
+    
+    st.dataframe(benchmark_summary, use_container_width=True)
+
 else:
     st.info("Please enter tickers and click 'Run Simulation' or upload a portfolio CSV to display optimization data.")
