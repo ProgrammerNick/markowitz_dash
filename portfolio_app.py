@@ -205,13 +205,47 @@ def fetch_stock_data(tickers, start_date, end_date):
     except Exception as e:
         return None, [], tickers, f"Error fetching data: {str(e)}"
 
+def fetch_sp500_benchmark(start_date, end_date, rf_rate):
+    """Fetch S&P 500 (^GSPC / SPY) benchmark data and compute risk/return metrics"""
+    try:
+        adjusted_end_date = end_date + timedelta(days=1)
+        bm_raw = yf.download(['^GSPC', 'SPY'], start=start_date, end=adjusted_end_date, progress=False, auto_adjust=True)
+        if bm_raw is None or bm_raw.empty:
+            return None
+            
+        if isinstance(bm_raw.columns, pd.MultiIndex):
+            bm_data = bm_raw['Close'] if 'Close' in bm_raw.columns.levels[0] else bm_raw
+        else:
+            bm_data = bm_raw
+
+        bm_returns = bm_data.pct_change().dropna()
+        
+        target_symbol = '^GSPC' if '^GSPC' in bm_returns and not bm_returns['^GSPC'].dropna().empty else 'SPY'
+        if target_symbol not in bm_returns or bm_returns[target_symbol].dropna().empty:
+            return None
+
+        s_ret = bm_returns[target_symbol].dropna()
+        ann_return = s_ret.mean() * 252
+        ann_risk = s_ret.std() * np.sqrt(252)
+        sharpe = (ann_return - rf_rate) / ann_risk if ann_risk > 0 else 0
+        
+        return {
+            'symbol': 'S&P 500 (^GSPC)' if target_symbol == '^GSPC' else 'S&P 500 (SPY)',
+            'return': ann_return,
+            'risk': ann_risk,
+            'sharpe': sharpe
+        }
+    except Exception:
+        return None
+
 tickers = st.session_state.tickers
 initial_guess = st.session_state.initial_guess
 
 # Proceed with optimization if tickers are provided
 if tickers:
-    with st.spinner(f"Fetching historical price data for {', '.join(tickers)}..."):
+    with st.spinner(f"Fetching historical price data for {', '.join(tickers)} and S&P 500 benchmark..."):
         data, valid_tickers, invalid_tickers, error_message = fetch_stock_data(tickers, start_date, end_date)
+        sp500_metrics = fetch_sp500_benchmark(start_date, end_date, risk_free_rate)
     
     if invalid_tickers:
         st.warning(f"The following tickers were not recognized or had no price data: {', '.join(invalid_tickers)}")
@@ -243,7 +277,7 @@ if tickers:
             st.error("Insufficient overlapping data points after removing missing values. Please try a different date range or tickers.")
             st.stop()
 
-    # Calculate simple percentage returns (standard for linear portfolio aggregation Rp = sum(w_i * R_i))
+    # Calculate simple percentage returns
     returns = data.pct_change().dropna()
     
     if len(returns) < 2:
@@ -360,12 +394,22 @@ if tickers:
 
     # --- TOP LEVEL SUMMARY METRICS ---
     st.markdown("---")
-    st.subheader("Maximum Sharpe Ratio Portfolio (SLSQP Optimal)")
+    st.subheader("Maximum Sharpe Ratio Portfolio vs S&P 500 Benchmark")
+    
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     col_m1.metric("Optimized Expected Return", f"{optimized_return:.2%}")
     col_m2.metric("Optimized Annual Risk (Std Dev)", f"{optimized_risk:.2%}")
     col_m3.metric("Optimized Sharpe Ratio", f"{optimized_sharpe:.4f}")
-    col_m4.metric("Assets Analyzed", f"{len(tickers)}")
+    
+    if sp500_metrics:
+        excess_sharpe = optimized_sharpe - sp500_metrics['sharpe']
+        col_m4.metric(
+            f"S&P 500 Sharpe ({sp500_metrics['symbol'].split()[0]})",
+            f"{sp500_metrics['sharpe']:.4f}",
+            delta=f"{excess_sharpe:+.4f} vs Mkt"
+        )
+    else:
+        col_m4.metric("Assets Analyzed", f"{len(tickers)}")
 
     # --- EFFICIENT FRONTIER SCATTER PLOT DISPLAYED DIRECTLY ---
     st.markdown("---")
@@ -415,7 +459,7 @@ if tickers:
             x=asset_df['Risk'],
             y=asset_df['Return'],
             mode='markers+text',
-            marker=dict(size=12, color='#DC2626', line=dict(width=2, color='black')),
+            marker=dict(size=11, color='#DC2626', line=dict(width=2, color='black')),
             text=[f"<b>{t}</b>" for t in asset_df['Ticker']],
             textposition="top center",
             textfont=dict(size=12, color="#1F2937", family="Arial, sans-serif"),
@@ -425,6 +469,24 @@ if tickers:
             hovertext=[f"Stock: {row['Ticker']}<br>Return: {row['Return']:.2%}<br>Risk: {row['Risk']:.2%}<br>Sharpe: {row['Sharpe']:.4f}" for _, row in asset_df.iterrows()]
         )
     )
+
+    # Trace 3: S&P 500 Market Benchmark Marker (if available)
+    if sp500_metrics:
+        fig.add_trace(
+            go.Scatter(
+                x=[sp500_metrics['risk']],
+                y=[sp500_metrics['return']],
+                mode='markers+text',
+                marker=dict(size=14, symbol='diamond', color='#2563EB', line=dict(width=2, color='white')),
+                text=[f"<b>{sp500_metrics['symbol']}</b>"],
+                textposition="top center",
+                textfont=dict(size=12, color="#1D4ED8", family="Arial, sans-serif"),
+                cliponaxis=False,
+                name=sp500_metrics['symbol'],
+                hoverinfo='text',
+                hovertext=f"Benchmark: {sp500_metrics['symbol']}<br>Return: {sp500_metrics['return']:.2%}<br>Risk: {sp500_metrics['risk']:.2%}<br>Sharpe: {sp500_metrics['sharpe']:.4f}"
+            )
+        )
 
     fig.update_layout(
         xaxis=dict(
@@ -476,7 +538,7 @@ if tickers:
     st.markdown("---")
     st.subheader("Strategic Benchmark Portfolios Comparison")
     
-    benchmark_summary = pd.DataFrame([
+    benchmark_rows = [
         {
             "Strategy": "Maximum Sharpe Ratio (SLSQP Optimal)",
             "Expected Return": f"{optimized_return:.2%}",
@@ -505,9 +567,18 @@ if tickers:
             "Sharpe Ratio": f"{max_ret_row['Sharpe Ratio']:.4f}",
             "Allocation Breakdown": ", ".join([f"{t}: {w:.1%}" for t, w in zip(tickers, max_ret_row['Weights'])])
         }
-    ])
+    ]
+
+    if sp500_metrics:
+        benchmark_rows.append({
+            "Strategy": f"Market Benchmark: {sp500_metrics['symbol']}",
+            "Expected Return": f"{sp500_metrics['return']:.2%}",
+            "Risk (Std Dev)": f"{sp500_metrics['risk']:.2%}",
+            "Sharpe Ratio": f"{sp500_metrics['sharpe']:.4f}",
+            "Allocation Breakdown": f"100% {sp500_metrics['symbol']}"
+        })
     
-    st.dataframe(benchmark_summary, use_container_width=True)
+    st.dataframe(pd.DataFrame(benchmark_rows), use_container_width=True)
 
     st.subheader("Top 5 High-Sharpe Portfolios")
     portfolio_counter = 1
